@@ -6,16 +6,18 @@ from optparse import OptionParser
 from socket import AF_INET, AF_INET6, inet_pton
 from formatter import Formatter
 from filereader import get_communities_data
+import subprocess
 
 
 class BirdFormatter(Formatter):
     "Formatter for bind9 using type forward"
-    def add_data(self, asn, name, template, peer):
+    def add_data(self, asn, name, template, peer, online):
         self.config.append(dedent("""
             protocol bgp %s from %s {
                 neighbor %s as %s;
+                passive %s;
             }
-            """ % (name, template, peer, asn)))
+            """ % (name, template, peer, asn, 'off' if online else 'on')))
 
 
 class QuaggaFormatter(Formatter):
@@ -24,12 +26,23 @@ class QuaggaFormatter(Formatter):
     def add_comment(self, comment):
         self.config.append("! " + "\n! ".join(comment.split("\n")))
 
-    def add_data(self, asn, name, template, peer):
+    def add_data(self, asn, name, template, peer, online):
         self.config.append(dedent("""
             neighbor %(peer)s remote-as %(asn)s
             neighbor %(peer)s description %(name)s
             neighbor %(peer)s peer-group %(template)s
         """ % {"peer": peer, "asn": asn, "name": name, "template": template}))
+
+
+def check_icmp_reachability(host, family):
+    if family is 'ipv4':
+        process_name = 'ping'
+    else:
+        process_name = 'ping6'
+    child = subprocess.Popen([process_name, host, '-i', '0.2', '-c', '4', '-W', '5'],
+                             stdout=subprocess.PIPE)
+    child.communicate()
+    return True if child.returncode == 0 else False
 
 
 def create_config(srcdir, exclude, prefix, defaulttemplate, templates, family,
@@ -59,8 +72,10 @@ def create_config(srcdir, exclude, prefix, defaulttemplate, templates, family,
 
             peer = d[family]
 
+            online = check_icmp_reachability(peer, family)
+
             formatter.add_data(asn, prefix + host,
-                               template[community], peer)
+                               template[community], peer, online)
 
     print(formatter.finalize())
 

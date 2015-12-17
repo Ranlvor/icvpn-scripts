@@ -27,11 +27,17 @@ class QuaggaFormatter(Formatter):
         self.config.append("! " + "\n! ".join(comment.split("\n")))
 
     def add_data(self, asn, name, template, peer, online):
-        self.config.append(dedent("""
+        block = dedent("""
             neighbor %(peer)s remote-as %(asn)s
             neighbor %(peer)s description %(name)s
             neighbor %(peer)s peer-group %(template)s
-        """ % {"peer": peer, "asn": asn, "name": name, "template": template}))
+        """ % {"peer": peer, "asn": asn, "name": name, "template": template})
+
+        if not online:
+          block += dedent("""neighbor %(peer)s passive
+          """ % {"peer": peer})
+
+        self.config.append(block)
 
 
 def check_icmp_reachability(host, family):
